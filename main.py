@@ -7,7 +7,6 @@ import re
 
 app = FastAPI()
 
-# Enable CORS so your mobile browser can talk to the cloud server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,29 +16,37 @@ app.add_middleware(
 )
 
 def process_image_with_opencv(image_bytes):
-    # Decode image bytes into a NumPy array for OpenCV
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
     if img is None:
         return ""
 
-    # 1. SPEED OPTIMIZATION: Resize large phone images if width > 1200px
+    # Resize large phone images for speed
     h, w = img.shape[:2]
     max_dim = 1200
     if max(h, w) > max_dim:
         scale = max_dim / float(max(h, w))
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
 
-    # 2. Convert to Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 3. Gentle contrast enhancement to protect text details from clipping
     gray = cv2.equalizeHist(gray)
 
-    # 4. HIGH-SPEED SINGLE PASS OCR: --psm 3 reads full layout without multi-angle lag
-    config = "--oem 3 --psm 3"
-    extracted_text = pytesseract.image_to_string(gray, config=config)
+    # MULTI-ORIENTATION SCANNING: Capture both horizontal and vertical text labels
+    extracted_text = ""
+    angles = [0, 90, 270]
+    
+    for angle in angles:
+        if angle == 90:
+            rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+        elif angle == 270:
+            rotated = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        else:
+            rotated = gray
+
+        config = "--oem 3 --psm 3"
+        text = pytesseract.image_to_string(rotated, config=config)
+        extracted_text += "\n" + text
 
     return extracted_text
 
@@ -47,7 +54,6 @@ def audit_rules(text):
     text_lower = text.lower()
     cleaned_text = re.sub(r'\s+', ' ', text_lower)
 
-    # Simple 6-Rule Evaluation Matrix Checks
     mrp_pass = bool(re.search(r'(mrp|rs\.?|₹|inclusive of all taxes)', cleaned_text))
     qty_pass = bool(re.search(r'(net qty|net weight|nt\.?wt\.?|g|kg|ml|l|pcs)', cleaned_text))
     mfg_pass = bool(re.search(r'(manufactured by|mfg|mfd|pkd|packer|marketed by)', cleaned_text))
@@ -62,7 +68,7 @@ def audit_rules(text):
         "Month & Year of Packing/Mfg": "PASS" if date_pass else "VIOLATION",
         "Consumer Care Details": "PASS" if care_pass else "VIOLATION",
         "Ingredients Declaration": "PASS" if ing_pass else "VIOLATION",
-        "raw_text": text[:500]  # Preview snippet of OCR text
+        "raw_text": text[:800]
     }
 
 @app.post("/audit")

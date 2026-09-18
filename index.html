@@ -8,33 +8,31 @@
 </head>
 <body class="bg-light p-4">
     <div class="container" style="max-width: 600px;">
-        <h2 class="text-center mb-4">🔍 NyayaNetra Mobile</h2>
+        <h2 class="text-center mb-4">🔍 NyayaNetra Mobile Audit</h2>
         
         <div class="card shadow p-4 mb-4">
             <div class="mb-3">
                 <label class="form-label fw-bold">Snap or Upload Package Photo</label>
-                <!-- capture="environment" forces phone camera to open on mobile -->
-                <input type="file" class="form-control" id="packageInput" accept="image/*" >
+                <!-- No capture attribute ensures phone shows choice: Camera OR Gallery/Album -->
+                <input type="file" class="form-control" id="packageInput" accept="image/*">
             </div>
             <button class="btn btn-primary w-100" onclick="runAudit()">Run LMPC Audit</button>
         </div>
 
         <div id="loading" class="text-center d-none mb-3">
             <div class="spinner-border text-primary" role="status"></div>
-            <p class="text-muted mt-2">Processing image with OpenCV & OCR...</p>
+            <p class="text-muted mt-2">Processing vertical & horizontal text...</p>
         </div>
 
         <div id="results" class="card shadow p-4 d-none">
-            <h4>Audit Report</h4>
-            <ul id="resultsList" class="list-group list-group-flush mb-3"></ul>
-            <details>
-                <summary class="fw-bold text-secondary">View Raw OCR Text</summary>
-                <pre id="rawText" class="bg-dark text-light p-2 mt-2 rounded small"></pre>
-            </details>
+            <h4 class="mb-3">Audit Report</h4>
+            <div id="reportContent"></div>
         </div>
     </div>
 
     <script>
+        const cloudUrl = "https://nyayanetra-cloud.onrender.com/audit";
+
         async function runAudit() {
             const fileInput = document.getElementById('packageInput');
             if (fileInput.files.length === 0) {
@@ -49,30 +47,26 @@
             document.getElementById('results').classList.add('d-none');
 
             try {
-                // REPLACE THIS URL with your live cloud backend URL after deployment
-                const cloudUrl = "https://nyayanetra-cloud.onrender.com/audit";
-
                 const response = await fetch(cloudUrl, {
                     method: 'POST',
                     body: formData
                 });
-
                 const data = await response.json();
-                let listHtml = '';
                 
-                for (const [rule, status] of Object.entries(data)) {
-                    if (rule === 'raw_text') continue;
-                    let badgeColor = status === 'PASS' ? 'bg-success' : 'bg-danger';
-                    listHtml += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                        ${rule} <span class="badge ${badgeColor} rounded-pill">${status}</span>
-                    </li>`;
+                let html = "<ul class='list-group mb-3'>";
+                for (const [key, value] of Object.entries(data)) {
+                    if (key !== 'raw_text') {
+                        const badgeClass = value === 'PASS' ? 'bg-success' : 'bg-danger';
+                        html += `<li class='list-group-item d-flex justify-content-between align-items-center'>${key}<span class='badge ${badgeClass} rounded-pill'>${value}</span></li>`;
+                    }
                 }
+                html += "</ul>";
+                html += "<h6>Extracted Text Preview:</h6><pre class='bg-light p-2 border' style='font-size:11px; max-height:180px; overflow-y:auto;'>" + (data.raw_text || "") + "</pre>";
 
-                document.getElementById('resultsList').innerHTML = listHtml;
-                document.getElementById('rawText').innerText = data.raw_text || "No text found.";
+                document.getElementById('reportContent').innerHTML = html;
                 document.getElementById('results').classList.remove('d-none');
-            } catch (error) {
-                alert("Error connecting to cloud backend: " + error);
+            } catch (err) {
+                alert("Error connecting to cloud backend: " + err);
             } finally {
                 document.getElementById('loading').classList.add('d-none');
             }
