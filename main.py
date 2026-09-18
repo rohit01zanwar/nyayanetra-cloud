@@ -22,7 +22,7 @@ def process_image_with_opencv(image_bytes):
     if img is None:
         return ""
 
-    # Resize large phone images for speed
+    # Resize large images for speed
     h, w = img.shape[:2]
     max_dim = 1200
     if max(h, w) > max_dim:
@@ -32,33 +32,26 @@ def process_image_with_opencv(image_bytes):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
 
-    # MULTI-ORIENTATION SCANNING: Capture both horizontal and vertical text labels
-    extracted_text = ""
-    angles = [0, 90, 270]
-    
-    for angle in angles:
-        if angle == 90:
-            rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
-        elif angle == 270:
-            rotated = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        else:
-            rotated = gray
+    # Standard OCR pass for normal horizontal text
+    config = "--oem 3 --psm 3"
+    text_normal = pytesseract.image_to_string(gray, config=config)
 
-        config = "--oem 3 --psm 3"
-        text = pytesseract.image_to_string(rotated, config=config)
-        extracted_text += "\n" + text
+    # Secondary pass with 90-degree rotation to catch vertical side-panel text
+    rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+    text_rotated = pytesseract.image_to_string(rotated, config=config)
 
-    return extracted_text
+    return text_normal + "\n" + text_rotated
 
 def audit_rules(text):
     text_lower = text.lower()
     cleaned_text = re.sub(r'\s+', ' ', text_lower)
 
-    mrp_pass = bool(re.search(r'(mrp|rs\.?|₹|inclusive of all taxes)', cleaned_text))
-    qty_pass = bool(re.search(r'(net qty|net weight|nt\.?wt\.?|g|kg|ml|l|pcs)', cleaned_text))
-    mfg_pass = bool(re.search(r'(manufactured by|mfg|mfd|pkd|packer|marketed by)', cleaned_text))
-    date_pass = bool(re.search(r'(b\.no|batch|exp|best before|month|year|packed on)', cleaned_text))
-    care_pass = bool(re.search(r'(customer care|helpline|consumer|email|phone|contact)', cleaned_text))
+    # Flexible keyword checks to prevent false violations
+    mrp_pass = bool(re.search(r'(mrp|rs\.?|₹|price|inclusive|taxes)', cleaned_text))
+    qty_pass = bool(re.search(r'(net|qty|weight|wt|g|kg|ml|l|pcs|gram)', cleaned_text))
+    mfg_pass = bool(re.search(r'(manufactured|mfg|mfd|pkd|packer|marketed|consumer service)', cleaned_text))
+    date_pass = bool(re.search(r'(batch|b\.no|exp|best before|month|year|packed|date)', cleaned_text))
+    care_pass = bool(re.search(r'(customer care|helpline|consumer|email|phone|contact|query|queries)', cleaned_text))
     ing_pass = bool(re.search(r'(ingredients|composition|contains)', cleaned_text))
 
     return {
