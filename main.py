@@ -24,7 +24,7 @@ def process_image_with_opencv(image_bytes):
     if img is None:
         return ""
 
-    # 1. Resize to max dimension 1200px for high-speed processing
+    # 1. SPEED OPTIMIZATION: Resize large phone images if width > 1200px
     h, w = img.shape[:2]
     max_dim = 1200
     if max(h, w) > max_dim:
@@ -34,25 +34,12 @@ def process_image_with_opencv(image_bytes):
     # 2. Convert to Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # 3. Boost contrast to highlight faint text on packaging
-    enhanced = cv2.convertScaleAbs(gray, alpha=2.0, beta=0)
+    # 3. Gentle contrast enhancement to protect text details from clipping
+    gray = cv2.equalizeHist(gray)
 
-    # 4. Multi-angle OCR scanning (0°, 90°, 270°) for vertical side-panel text
-    extracted_text = ""
-    angles = [0, 90, 270]
-    
-    for angle in angles:
-        if angle == 90:
-            rotated = cv2.rotate(enhanced, cv2.ROTATE_90_CLOCKWISE)
-        elif angle == 270:
-            rotated = cv2.rotate(enhanced, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        else:
-            rotated = enhanced
-
-        # Run Tesseract OCR with multiple page segmentation modes
-        config = "--psm 3"
-        text = pytesseract.image_to_string(rotated, config=config)
-        extracted_text += "\n" + text
+    # 4. HIGH-SPEED SINGLE PASS OCR: --psm 3 reads full layout without multi-angle lag
+    config = "--oem 3 --psm 3"
+    extracted_text = pytesseract.image_to_string(gray, config=config)
 
     return extracted_text
 
